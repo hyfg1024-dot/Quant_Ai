@@ -216,13 +216,33 @@ st.markdown(
         border: none !important;
         box-shadow: none !important;
     }
-    .stock-open-wrap div.stButton > button {
-        min-height: 92px !important;
-        border-radius: 14px !important;
-        white-space: pre-line !important;
-        line-height: 1.28 !important;
-        font-size: 1.02rem !important;
-        padding: 0.45rem 0.35rem !important;
+    .stock-tile {
+        border: 1px solid #9bb9e3;
+        border-radius: 14px;
+        background: #dbeafe;
+        height: 124px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        text-align: center;
+    }
+    .stock-tile.selected {
+        border: 2px solid #4b83c8;
+        box-shadow: inset 0 0 0 1px rgba(75, 131, 200, 0.15);
+    }
+    .stock-tile .name {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #17345d;
+        line-height: 1.2;
+    }
+    .stock-tile .code {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #355782;
+        line-height: 1;
     }
     </style>
     """,
@@ -394,15 +414,20 @@ for start in range(0, len(rows), grid_cols):
     for idx, row in enumerate(chunk):
         col = row_cols[idx]
         with col:
-            st.markdown('<div class="stock-open-wrap">', unsafe_allow_html=True)
-            if st.button(
-                f"{row['name']}\n{row['code']}",
-                key=f"open_fast_{row['code']}",
-                use_container_width=True,
-            ):
+            is_selected = st.session_state.get("fast_selected_code") == row["code"]
+            selected_cls = "selected" if is_selected else ""
+            st.markdown(
+                f"""
+                <div class="stock-tile {selected_cls}">
+                    <div class="name">{row['name']}</div>
+                    <div class="code">{row['code']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("查看", key=f"open_fast_{row['code']}", use_container_width=True, type="tertiary"):
                 st.session_state["fast_selected_code"] = row["code"]
                 st.session_state["fast_selected_name"] = row["name"]
-            st.markdown("</div>", unsafe_allow_html=True)
 
             del_row = st.columns([4, 1, 4])
             with del_row[1]:
