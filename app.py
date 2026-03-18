@@ -623,9 +623,12 @@ def _render_fast_panel_fragment():
     else:
         panel = st.session_state.get(cache_key)
         if panel is None:
-            st.info("当前为闭市时段，暂无开市缓存快照。")
-            return
-        st.info("当前为闭市时段，展示上次开市缓存数据。")
+            # 闭市时允许抓取一次静态快照用于查看，但不进入自动刷新循环
+            panel = fetch_fast_panel(selected_code)
+            st.session_state[cache_key] = panel
+            st.info("当前为闭市时段，已加载一次静态快照（自动刷新暂停）。")
+        else:
+            st.info("当前为闭市时段，展示上次快照（自动刷新暂停）。")
 
     _render_fast_panel(selected_code, selected_name, panel=panel)
 
