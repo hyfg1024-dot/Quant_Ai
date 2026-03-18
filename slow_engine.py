@@ -182,6 +182,19 @@ def add_stock_by_query(query: str) -> Tuple[str, str]:
     return code, name
 
 
+def remove_stock_from_pool(code: str, delete_history: bool = False) -> None:
+    target = str(code).strip()
+    if not target:
+        raise ValueError("股票代码不能为空")
+
+    init_db()
+    with _connect() as conn:
+        conn.execute("DELETE FROM stock_info WHERE code = ?", (target,))
+        if delete_history:
+            conn.execute("DELETE FROM fundamental_data WHERE code = ?", (target,))
+        conn.commit()
+
+
 def _fetch_pb_from_baidu(symbol: str) -> Optional[float]:
     try:
         df = ak.stock_zh_valuation_baidu(

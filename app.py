@@ -1,6 +1,7 @@
 import altair as alt
 import pandas as pd
 import streamlit as st
+from streamlit.components.v1 import html
 
 from fast_engine import fetch_fast_panel
 from slow_engine import (
@@ -8,6 +9,7 @@ from slow_engine import (
     get_latest_fundamental_snapshot,
     get_stock_pool,
     init_db,
+    remove_stock_from_pool,
     update_fundamental_data,
 )
 
@@ -125,7 +127,7 @@ st.markdown(
     .ob-block { margin-top: 0.3rem; }
     .ob-row {
         display: grid;
-        grid-template-columns: 110px 1fr 56px;
+        grid-template-columns: 44px 78px 1fr 56px;
         gap: 0.5rem;
         align-items: center;
         margin: 0.18rem 0;
@@ -133,6 +135,13 @@ st.markdown(
     .ob-lab {
         font-weight: 700;
         font-size: 1.05rem;
+        letter-spacing: 0.3px;
+    }
+    .ob-price {
+        font-weight: 700;
+        font-size: 1.05rem;
+        text-align: right;
+        padding-right: 4px;
     }
     .ob-bar-wrap {
         height: 24px;
@@ -152,6 +161,7 @@ st.markdown(
         color: #2f4059;
         font-weight: 700;
         font-size: 1rem;
+        letter-spacing: 0.2px;
     }
     .ob-sell { color: #2f9f5d; }
     .ob-buy { color: #d84f4f; }
@@ -225,13 +235,28 @@ styled = snapshot_df.style.apply(_highlight_defensive, axis=1).format(
 )
 st.dataframe(styled, width="stretch", hide_index=True)
 
-st.markdown("#### 点击股票名称打开快引擎子版面")
-btn_cols = st.columns(min(3, max(1, len(rows))))
-for idx, row in enumerate(rows):
-    col = btn_cols[idx % len(btn_cols)]
-    if col.button(f"{row['name']} ({row['code']})", key=f"open_fast_{row['code']}", use_container_width=True):
+st.markdown('<div class="engine-divider"><span>快引擎子版面</span></div>', unsafe_allow_html=True)
+header_cols = st.columns([2, 1, 1])
+auto_refresh_sec = header_cols[1].number_input("自动刷新秒(0关闭)", min_value=0, max_value=300, value=0, step=1)
+if header_cols[2].button("刷新", use_container_width=True):
+    st.rerun()
+if auto_refresh_sec > 0:
+    html(
+        f"<script>setTimeout(function(){{window.parent.location.reload();}}, {int(auto_refresh_sec) * 1000});</script>",
+        height=0,
+    )
+
+for row in rows:
+    b1, b2 = st.columns([9, 1])
+    if b1.button(f"{row['name']} ({row['code']})", key=f"open_fast_{row['code']}", use_container_width=True):
         st.session_state["fast_selected_code"] = row["code"]
         st.session_state["fast_selected_name"] = row["name"]
+    if b2.button("删", key=f"del_fast_{row['code']}", use_container_width=True):
+        remove_stock_from_pool(row["code"])
+        if st.session_state.get("fast_selected_code") == row["code"]:
+            st.session_state.pop("fast_selected_code", None)
+            st.session_state.pop("fast_selected_name", None)
+        st.rerun()
 
 if "fast_selected_code" not in st.session_state:
     st.session_state["fast_selected_code"] = rows[0]["code"]
@@ -239,11 +264,6 @@ if "fast_selected_code" not in st.session_state:
 
 selected_code = st.session_state["fast_selected_code"]
 selected_name = st.session_state["fast_selected_name"]
-
-st.markdown('<div class="engine-divider"><span>快引擎子版面</span></div>', unsafe_allow_html=True)
-header_cols = st.columns([3, 1])
-if header_cols[1].button("刷新快引擎", use_container_width=True):
-    st.rerun()
 
 panel = fetch_fast_panel(selected_code)
 quote = panel["quote"]
@@ -351,7 +371,8 @@ with right:
                 v_txt = f"{int(vol_num)}" if vol_num > 0 else "--"
                 rows_html += (
                     f'<div class="ob-row">'
-                    f'<div class="ob-lab {lab_class}">{side_txt}{lvl}  {p_txt}</div>'
+                    f'<div class="ob-lab {lab_class}">{side_txt}{lvl}</div>'
+                    f'<div class="ob-price {lab_class}">{p_txt}</div>'
                     f'<div class="ob-bar-wrap"><div class="ob-bar {bar_class}" style="width:{width}%"></div></div>'
                     f'<div class="ob-vol">{v_txt}</div>'
                     f"</div>"
