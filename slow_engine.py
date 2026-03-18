@@ -217,6 +217,26 @@ def _fetch_metrics_from_eastmoney_direct(symbol: str) -> Dict[str, Optional[floa
     return {"pe": None, "pb": None}
 
 
+def _fetch_metrics_from_tencent(symbol: str) -> Dict[str, Optional[float]]:
+    exchange = "sh" if str(symbol).startswith("6") else "sz"
+    url = f"https://qt.gtimg.cn/q={exchange}{symbol}"
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        resp.raise_for_status()
+        resp.encoding = "gbk"
+        text = resp.text
+        if '"' not in text or "~" not in text:
+            return {"pe": None, "pb": None}
+        payload = text.split('"', 1)[1].rsplit('"', 1)[0]
+        fields = payload.split("~")
+        # 腾讯字段: 46=PB, 52=动态PE
+        pe = _to_float(fields[52]) if len(fields) > 52 else None
+        pb = _to_float(fields[46]) if len(fields) > 46 else None
+        return {"pe": pe, "pb": pb}
+    except Exception:
+        return {"pe": None, "pb": None}
+
+
 def _fetch_related_commodity_prices(symbol: str) -> Dict[str, Dict[str, Optional[float]]]:
     # Sina 内盘连续合约代码；不同品种可按策略需要继续扩展。
     contracts_map = {
@@ -269,6 +289,13 @@ def fetch_latest_fundamental(symbol: str, default_name: str = "") -> Dict:
             pe = em_metrics.get("pe")
         if pb is None:
             pb = em_metrics.get("pb")
+
+    if pe is None or pb is None:
+        tx_metrics = _fetch_metrics_from_tencent(symbol)
+        if pe is None:
+            pe = tx_metrics.get("pe")
+        if pb is None:
+            pb = tx_metrics.get("pb")
 
     if pb is None:
         pb = _fetch_pb_from_baidu(symbol)
