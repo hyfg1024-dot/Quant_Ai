@@ -62,18 +62,15 @@ st.markdown(
         color: #1f334f !important;
         font-weight: 700 !important;
     }
-    [data-testid="stToggle"] label,
-    [data-testid="stToggle"] label span,
-    [data-testid="stToggle"] div,
-    [data-testid="stToggle"] p {
-        color: #1f334f !important;
+    div[data-testid="stToggle"] label,
+    div[data-testid="stToggle"] label span,
+    div[data-testid="stToggle"] label p,
+    div[data-testid="stToggle"] label [data-testid="stMarkdownContainer"],
+    div[data-testid="stToggle"] label [data-testid="stMarkdownContainer"] p {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
         opacity: 1 !important;
-    }
-    [data-testid="stToggle"] label [data-testid="stMarkdownContainer"] p {
-        color: #111111 !important;
-        -webkit-text-fill-color: #111111 !important;
         font-weight: 700 !important;
-        opacity: 1 !important;
     }
     .engine-divider {
         margin: 1.2rem 0 1rem 0;
