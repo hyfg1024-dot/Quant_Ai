@@ -196,17 +196,17 @@ st.markdown(
         margin: 0.5rem 0;
     }
     .mini-del-wrap button {
-        min-height: 2.55rem !important;
-        padding: 0.25rem 0.2rem !important;
-        font-size: 1.05rem !important;
-        background: #dbeafe !important;
-        color: #1f334f !important;
-        border: 1px solid #a8c2e8 !important;
+        min-height: 1.9rem !important;
+        padding: 0 !important;
+        font-size: 1.35rem !important;
+        background: transparent !important;
+        color: #60748f !important;
+        border: none !important;
         box-shadow: none !important;
     }
     .mini-del-wrap button:hover {
-        background: #c7ddfb !important;
-        color: #0b2346 !important;
+        background: transparent !important;
+        color: #1f334f !important;
     }
     </style>
     """,
@@ -371,7 +371,7 @@ for idx, row in enumerate(rows):
     del_row = col.columns([3, 2, 3])
     with del_row[1]:
         st.markdown('<div class="mini-del-wrap">', unsafe_allow_html=True)
-        if st.button("回收站", key=f"mini_del_{row['code']}", use_container_width=True, help=f"删除 {row['name']}"):
+        if st.button("♻", key=f"mini_del_{row['code']}", use_container_width=False, help=f"删除 {row['name']}"):
             remove_stock_from_pool(row["code"])
             if st.session_state.get("fast_selected_code") == row["code"]:
                 st.session_state.pop("fast_selected_code", None)
