@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Tuple
 
+import akshare as ak
 import pandas as pd
 import requests
 
@@ -237,28 +238,12 @@ def _calc_rsi(close: pd.Series, period: int = 6) -> pd.Series:
     return rsi
 
 
-def fetch_technical_indicators(symbol: str, count: int = 120) -> Dict[str, Optional[float]]:
-    exchange, normalized = _resolve_market(symbol)
-    url = TENCENT_DAILY_URL.format(exchange=exchange, symbol=normalized, count=count)
-    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
-    resp.raise_for_status()
-    payload = resp.json()
+def _calc_indicators_from_ohlcv(df: pd.DataFrame) -> Dict[str, Optional[float]]:
+    close = pd.to_numeric(df["close"], errors="coerce")
+    close = close.dropna().reset_index(drop=True)
+    if close.empty:
+        raise ValueError("No valid close prices")
 
-    code_key = f"{exchange}{normalized}"
-    kline_data = payload.get("data", {}).get(code_key, {}).get("qfqday", [])
-    if not kline_data:
-        raise ValueError("No daily kline data")
-
-    normalized = [row[:6] for row in kline_data if len(row) >= 6]
-    if not normalized:
-        raise ValueError("Invalid daily kline payload")
-
-    cols = ["date", "open", "close", "high", "low", "volume"]
-    df = pd.DataFrame(normalized, columns=cols)
-    for col in ["open", "close", "high", "low", "volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    close = df["close"]
     ema12 = close.ewm(span=12, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
     dif = ema12 - ema26
@@ -273,6 +258,39 @@ def fetch_technical_indicators(symbol: str, count: int = 120) -> Dict[str, Optio
         "rsi6": _to_float(rsi6.iloc[-1]),
         "ma20": _to_float(ma20.iloc[-1]),
     }
+
+
+def _fetch_hk_daily_ohlcv(symbol: str) -> pd.DataFrame:
+    df = ak.stock_hk_daily(symbol=str(symbol).zfill(5), adjust="")
+    if df is None or df.empty:
+        raise ValueError("No HK daily data")
+    required = {"open", "high", "low", "close", "volume"}
+    if not required.issubset(set(df.columns)):
+        raise ValueError("HK daily payload missing OHLCV fields")
+    return df[["open", "high", "low", "close", "volume"]].copy()
+
+
+def fetch_technical_indicators(symbol: str, count: int = 120) -> Dict[str, Optional[float]]:
+    exchange, normalized = _resolve_market(symbol)
+    url = TENCENT_DAILY_URL.format(exchange=exchange, symbol=normalized, count=count)
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    code_key = f"{exchange}{normalized}"
+    kline_data = payload.get("data", {}).get(code_key, {}).get("qfqday", [])
+    if not kline_data:
+        if exchange == "hk":
+            return _calc_indicators_from_ohlcv(_fetch_hk_daily_ohlcv(normalized))
+        raise ValueError("No daily kline data")
+
+    normalized_rows = [row[:6] for row in kline_data if len(row) >= 6]
+    if not normalized_rows:
+        raise ValueError("Invalid daily kline payload")
+
+    cols = ["date", "open", "close", "high", "low", "volume"]
+    df = pd.DataFrame(normalized_rows, columns=cols)
+    return _calc_indicators_from_ohlcv(df[["open", "high", "low", "close", "volume"]])
 
 
 def fetch_fast_panel(symbol: str) -> Dict:
