@@ -69,6 +69,12 @@ st.markdown(
         color: #1f334f !important;
         opacity: 1 !important;
     }
+    [data-testid="stToggle"] label [data-testid="stMarkdownContainer"] p {
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+    }
     .engine-divider {
         margin: 1.2rem 0 1rem 0;
         border-top: 2px solid #c7d3e3;
@@ -184,6 +190,14 @@ st.markdown(
         min-height: 2.55rem !important;
         padding: 0.25rem 0.2rem !important;
         font-size: 1.05rem !important;
+        background: #dbeafe !important;
+        color: #1f334f !important;
+        border: 1px solid #a8c2e8 !important;
+        box-shadow: none !important;
+    }
+    .mini-del-wrap button:hover {
+        background: #c7ddfb !important;
+        color: #0b2346 !important;
     }
     </style>
     """,
