@@ -217,12 +217,13 @@ st.markdown(
         border-top: 1px solid #d7e0ec;
         margin: 0.5rem 0;
     }
-    .stock-item-frame {
+    .stock-bottom-strip {
+        height: 14px;
         border: 1px solid #9bb9e3;
-        border-radius: 14px;
-        padding: 0.24rem 0.3rem;
-        margin-bottom: 0.18rem;
-        background: rgba(219, 234, 254, 0.18);
+        border-radius: 10px;
+        background: rgba(219, 234, 254, 0.16);
+        margin-top: 0.16rem;
+        margin-bottom: 0.26rem;
     }
     .stock-open-wrap div.stButton > button {
         min-height: 72px !important;
@@ -455,7 +456,6 @@ def _render_stock_group(stock_rows, group_key_prefix: str) -> None:
         for idx, row in enumerate(chunk):
             col = row_cols[idx]
             with col:
-                st.markdown('<div class="stock-item-frame">', unsafe_allow_html=True)
                 open_col, del_col = st.columns([5.2, 1], vertical_alignment="center")
                 with open_col:
                     st.markdown('<div class="stock-open-wrap">', unsafe_allow_html=True)
@@ -482,7 +482,7 @@ def _render_stock_group(stock_rows, group_key_prefix: str) -> None:
                             st.session_state.pop("fast_selected_name", None)
                         st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown('<div class="stock-bottom-strip"></div>', unsafe_allow_html=True)
 
 
 group_cols = st.columns([1, 0.03, 1], vertical_alignment="top")
