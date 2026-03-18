@@ -216,6 +216,9 @@ st.markdown(
         border: none !important;
         box-shadow: none !important;
     }
+    .stock-open-wrap div.stButton {
+        margin-bottom: 0.02rem !important;
+    }
     .stock-open-wrap div.stButton > button {
         min-height: 72px !important;
         border-radius: 14px !important;
@@ -234,13 +237,15 @@ st.markdown(
         margin-top: 0.1rem !important;
     }
     .stock-del-wrap {
-        margin-top: 0.12rem !important;
+        margin-top: -0.42rem !important;
     }
     .stock-del-wrap div.stButton > button {
-        min-height: 2.0rem !important;
+        min-height: 1.45rem !important;
         border-radius: 10px !important;
         border: 1px solid #9bb9e3 !important;
-        background: rgba(219, 234, 254, 0.3) !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
         color: #5d708a !important;
         font-size: 1.05rem !important;
         padding: 0 !important;
@@ -249,7 +254,9 @@ st.markdown(
     .stock-del-wrap div.stButton > button:hover,
     .stock-del-wrap div.stButton > button:focus,
     .stock-del-wrap div.stButton > button:active {
-        background: rgba(199, 221, 251, 0.55) !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
         color: #1f334f !important;
         border: 1px solid #7ea7df !important;
         box-shadow: none !important;
@@ -439,6 +446,7 @@ for start in range(0, len(rows), grid_cols):
                 "🗑️",
                 key=f"mini_del_{row['code']}",
                 use_container_width=True,
+                type="tertiary",
                 help=f"删除 {row['name']}",
             ):
                 remove_stock_from_pool(row["code"])
