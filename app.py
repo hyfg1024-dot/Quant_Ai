@@ -161,6 +161,14 @@ st.markdown(
         color: #23364f;
         font-weight: 800;
     }
+    .panel-title {
+        font-size: 2.7rem;
+        color: #1e3450;
+        font-weight: 800;
+        line-height: 1.1;
+        margin: 0 0 0.5rem 0;
+        letter-spacing: 0.2px;
+    }
     .ob-block { margin-top: 0.3rem; }
     .ob-row {
         display: grid;
@@ -611,9 +619,9 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([2, 1])
+    left, right = st.columns([2, 1], vertical_alignment="top")
     with left:
-        st.markdown("## 资金分时")
+        st.markdown('<div class="panel-title">资金分时</div>', unsafe_allow_html=True)
         if intraday_df.empty:
             st.info("暂无分时资金数据")
         else:
@@ -635,7 +643,7 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
             st.altair_chart(chart, use_container_width=True)
 
     with right:
-        st.markdown('<div class="ob-title">实时盘口 (单位:手)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">实时盘口 (单位:手)</div>', unsafe_allow_html=True)
         sell_df = pd.DataFrame(order_book_5.get("sell", []))
         buy_df = pd.DataFrame(order_book_5.get("buy", []))
 
