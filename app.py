@@ -420,7 +420,7 @@ def _render_fast_panel(selected_code: str, selected_name: str):
         f"""
         <div style="margin: 0.2rem 0 0.4rem 0;">
           <button id="copy-json-btn-{selected_code}"
-            style="width:100%;padding:0.7rem 1rem;border-radius:12px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:1.8rem;font-weight:700;cursor:pointer;">
+            style="display:inline-block;width:auto;max-width:320px;padding:0.45rem 0.9rem;border-radius:10px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:1.05rem;font-weight:700;cursor:pointer;white-space:nowrap;">
             复制该股票JSON
           </button>
           <div id="copy-json-msg-{selected_code}" style="margin-top:0.5rem;color:#2e4b6e;font-size:0.95rem;"></div>
