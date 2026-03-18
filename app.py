@@ -217,14 +217,6 @@ st.markdown(
         border-top: 1px solid #d7e0ec;
         margin: 0.5rem 0;
     }
-    .stock-bottom-strip {
-        height: 14px;
-        border: 1px solid #9bb9e3;
-        border-radius: 10px;
-        background: rgba(219, 234, 254, 0.16);
-        margin-top: 0.16rem;
-        margin-bottom: 0.26rem;
-    }
     .stock-open-wrap div.stButton > button {
         min-height: 72px !important;
         border-radius: 10px !important;
@@ -482,7 +474,6 @@ def _render_stock_group(stock_rows, group_key_prefix: str) -> None:
                             st.session_state.pop("fast_selected_name", None)
                         st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
-                st.markdown('<div class="stock-bottom-strip"></div>', unsafe_allow_html=True)
 
 
 group_cols = st.columns([1, 0.03, 1], vertical_alignment="top")
