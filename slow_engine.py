@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import akshare as ak
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -185,6 +186,37 @@ def _fetch_pb_from_baidu(symbol: str) -> Optional[float]:
         return None
 
 
+def _fetch_metrics_from_eastmoney_direct(symbol: str) -> Dict[str, Optional[float]]:
+    secid = ("1." if str(symbol).startswith("6") else "0.") + str(symbol)
+    fields = "f57,f58,f162,f167"
+    urls = [
+        "https://push2.eastmoney.com/api/qt/stock/get",
+        "http://push2.eastmoney.com/api/qt/stock/get",
+    ]
+
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com"}
+    for _ in range(3):
+        for url in urls:
+            try:
+                resp = requests.get(
+                    url,
+                    params={"invt": "2", "fltt": "2", "secid": secid, "fields": fields},
+                    headers=headers,
+                    timeout=8,
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+                data = payload.get("data") or {}
+                return {
+                    "pe": _to_float(data.get("f162")),  # 动态市盈率
+                    "pb": _to_float(data.get("f167")),  # 市净率
+                }
+            except Exception:
+                continue
+
+    return {"pe": None, "pb": None}
+
+
 def _fetch_related_commodity_prices(symbol: str) -> Dict[str, Dict[str, Optional[float]]]:
     # Sina 内盘连续合约代码；不同品种可按策略需要继续扩展。
     contracts_map = {
@@ -231,6 +263,13 @@ def fetch_latest_fundamental(symbol: str, default_name: str = "") -> Dict:
         pass
 
     # 兜底：至少补足 PB，保证慢引擎可持续写库。
+    if pe is None or pb is None:
+        em_metrics = _fetch_metrics_from_eastmoney_direct(symbol)
+        if pe is None:
+            pe = em_metrics.get("pe")
+        if pb is None:
+            pb = em_metrics.get("pb")
+
     if pb is None:
         pb = _fetch_pb_from_baidu(symbol)
 
