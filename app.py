@@ -57,6 +57,11 @@ st.markdown(
         border: 1px solid #b8cdea !important;
         color: #0f2a52 !important;
     }
+    [data-testid="stToggle"] label p,
+    [data-testid="stSelectbox"] label p {
+        color: #1f334f !important;
+        font-weight: 700 !important;
+    }
     .engine-divider {
         margin: 1.2rem 0 1rem 0;
         border-top: 2px solid #c7d3e3;
@@ -235,16 +240,14 @@ styled = snapshot_df.style.apply(_highlight_defensive, axis=1).format(
 st.dataframe(styled, width="stretch", hide_index=True)
 
 st.markdown('<div class="engine-divider"><span>快引擎子版面</span></div>', unsafe_allow_html=True)
-header_cols = st.columns([2, 1, 1, 1])
+header_cols = st.columns([2.4, 0.8, 0.6, 0.9], vertical_alignment="bottom")
 header_cols[0].markdown("#### 观察标的")
 auto_refresh_on = header_cols[1].toggle("自动刷新", value=False, key="fast_auto_refresh_on")
-header_cols[2].markdown("刷新间隔")
 auto_refresh_sec = header_cols[2].selectbox(
     "刷新间隔(秒)",
     options=[3, 5, 10, 15, 30, 60],
     index=2,
     key="fast_auto_refresh_sec",
-    label_visibility="collapsed",
 )
 if header_cols[3].button("立即刷新", use_container_width=True):
     st.rerun()
