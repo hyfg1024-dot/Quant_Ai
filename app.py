@@ -227,13 +227,17 @@ st.markdown(
         margin: 0.5rem 0;
     }
     .stock-open-wrap div.stButton > button {
-        min-height: 72px !important;
+        min-height: 58px !important;
         border-radius: 10px !important;
         white-space: pre-line !important;
         line-height: 1.12 !important;
-        font-size: 1.06rem !important;
+        font-size: 0.97rem !important;
         font-weight: 800 !important;
-        padding: 0.22rem 0.3rem !important;
+        padding: 0.14rem 0.22rem !important;
+    }
+    .stock-open-wrap div[data-testid="stButton"],
+    .stock-del-inline-wrap div[data-testid="stButton"] {
+        margin-bottom: 0.06rem !important;
     }
     .stock-open-wrap div.stButton > button * {
         white-space: pre-line !important;
@@ -243,12 +247,12 @@ st.markdown(
         text-align: center !important;
     }
     .stock-open-wrap div.stButton > button p:last-child {
-        font-size: 0.95rem !important;
+        font-size: 0.86rem !important;
         letter-spacing: 0.5px !important;
         font-variant-numeric: tabular-nums !important;
     }
     .stock-del-inline-wrap div.stButton > button {
-        min-height: 72px !important;
+        min-height: 58px !important;
         border-radius: 10px !important;
         border: none !important;
         background: transparent !important;
@@ -412,7 +416,8 @@ if "fast_selected_code" not in st.session_state:
 selected_code_for_ctrl = st.session_state["fast_selected_code"]
 market_open_for_ctrl = _is_market_open(selected_code_for_ctrl)
 
-st.markdown('<div class="engine-divider"><span>交易面</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="engine-divider"></div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">交易面</div>', unsafe_allow_html=True)
 header_cols = st.columns([2.4, 0.8, 0.6, 0.9], vertical_alignment="bottom")
 header_cols[0].markdown("#### 观察标的")
 auto_refresh_on = header_cols[1].checkbox("自动刷新", value=False, key="fast_auto_refresh_on")
@@ -440,9 +445,11 @@ watch_rows = [r for r in rows if group_map.get(str(r["code"]), "watch") != "hold
 def _stock_grid_cols(total: int) -> int:
     if total <= 1:
         return 1
-    if total <= 6:
+    if total <= 4:
         return 2
-    return 3
+    if total <= 9:
+        return 3
+    return 4
 
 
 def _render_stock_group(stock_rows, group_key_prefix: str) -> None:
@@ -501,17 +508,6 @@ with group_cols[1]:
 with group_cols[2]:
     st.markdown("##### 观察")
     _render_stock_group(watch_rows, "watch")
-
-with st.expander("管理观察池（删除）", expanded=False):
-    del_options = [f"{r['name']} ({r['code']})" for r in rows]
-    target_del = st.selectbox("选择要删除的股票", options=del_options, label_visibility="collapsed")
-    if st.button("删除选中股票", key="delete_selected_stock"):
-        del_code = target_del.split("(")[-1].rstrip(")")
-        remove_stock_from_pool(del_code)
-        if st.session_state.get("fast_selected_code") == del_code:
-            st.session_state.pop("fast_selected_code", None)
-            st.session_state.pop("fast_selected_name", None)
-        st.rerun()
 
 def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
     if panel is None:
@@ -722,9 +718,6 @@ def _render_fast_panel_fragment():
             # 闭市时允许抓取一次静态快照用于查看，但不进入自动刷新循环
             panel = fetch_fast_panel(selected_code)
             st.session_state[cache_key] = panel
-            st.info("当前为闭市时段，已加载一次静态快照（自动刷新暂停）。")
-        else:
-            st.info("当前为闭市时段，展示上次快照（自动刷新暂停）。")
 
     _render_fast_panel(selected_code, selected_name, panel=panel)
 
