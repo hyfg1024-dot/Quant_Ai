@@ -1,3 +1,4 @@
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -54,6 +55,109 @@ st.markdown(
         background: #f7fbff !important;
         border: 1px solid #b8cdea !important;
         color: #0f2a52 !important;
+    }
+    .engine-divider {
+        margin: 1.2rem 0 1rem 0;
+        border-top: 2px solid #c7d3e3;
+        position: relative;
+    }
+    .engine-divider span {
+        position: relative;
+        top: -0.85rem;
+        background: #edf3fa;
+        padding: 0 0.7rem;
+        color: #4f6684;
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+    .fast-head-title {
+        color: #324760;
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+    }
+    .fast-price-line {
+        display: flex;
+        align-items: baseline;
+        gap: 0.8rem;
+        margin: 0.3rem 0 0.7rem 0;
+    }
+    .price-num {
+        font-size: 2.9rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+    .chg-num {
+        font-size: 1.7rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .a-up { color: #d14343; }
+    .a-down { color: #1fab63; }
+    .fast-card {
+        background: #f5f7fb;
+        border: 1px solid #d9e2ef;
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        min-height: 104px;
+    }
+    .fast-card .t {
+        color: #5f738f;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+    .fast-card .v {
+        color: #202c3c;
+        font-size: 2rem;
+        font-weight: 800;
+        margin-top: 0.15rem;
+    }
+    .fast-card .d {
+        color: #8a98ac;
+        font-size: 0.88rem;
+        margin-top: 0.1rem;
+    }
+    .ob-title {
+        font-size: 1.95rem;
+        color: #23364f;
+        font-weight: 800;
+    }
+    .ob-block { margin-top: 0.3rem; }
+    .ob-row {
+        display: grid;
+        grid-template-columns: 110px 1fr 56px;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.18rem 0;
+    }
+    .ob-lab {
+        font-weight: 700;
+        font-size: 1.05rem;
+    }
+    .ob-bar-wrap {
+        height: 24px;
+        background: rgba(207, 221, 236, 0.38);
+        border-radius: 4px;
+        position: relative;
+        overflow: hidden;
+    }
+    .ob-bar {
+        height: 100%;
+        border-radius: 4px;
+    }
+    .ob-bar.sell { background: rgba(59, 180, 107, 0.25); }
+    .ob-bar.buy { background: rgba(231, 98, 98, 0.28); }
+    .ob-vol {
+        text-align: right;
+        color: #2f4059;
+        font-weight: 700;
+        font-size: 1rem;
+    }
+    .ob-sell { color: #2f9f5d; }
+    .ob-buy { color: #d84f4f; }
+    .ob-sep {
+        border-top: 1px solid #d7e0ec;
+        margin: 0.5rem 0;
     }
     </style>
     """,
@@ -136,9 +240,8 @@ if "fast_selected_code" not in st.session_state:
 selected_code = st.session_state["fast_selected_code"]
 selected_name = st.session_state["fast_selected_name"]
 
-st.subheader("快引擎子版面")
+st.markdown('<div class="engine-divider"><span>快引擎子版面</span></div>', unsafe_allow_html=True)
 header_cols = st.columns([3, 1])
-header_cols[0].markdown(f"### {selected_name} ({selected_code})")
 if header_cols[1].button("刷新快引擎", use_container_width=True):
     st.rerun()
 
@@ -154,27 +257,71 @@ if panel.get("error") and not quote.get("current_price"):
 
 price_now = quote.get("current_price")
 change_pct = quote.get("change_pct")
+is_down = change_pct is not None and change_pct < 0
+price_class = "a-down" if is_down else "a-up"
 if price_now is not None:
-    st.markdown(f"## {price_now:.2f}  {'+' if (change_pct or 0) >= 0 else ''}{(change_pct or 0):.2f}%")
+    st.markdown(
+        f"""
+        <div class="fast-head-title">{selected_name} ({selected_code})</div>
+        <div class="fast-price-line">
+            <span class="price-num {price_class}">{price_now:.2f}</span>
+            <span class="chg-num {price_class}">{(change_pct or 0):+.2f}%</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.caption(f"更新时间: {quote.get('quote_time') or 'N/A'}")
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("MACD 柱", f"{ind.get('macd_hist'):.3f}" if ind.get("macd_hist") is not None else "N/A")
-k2.metric("RSI (6)", f"{ind.get('rsi6'):.2f}" if ind.get("rsi6") is not None else "N/A")
-k3.metric("MA20 线", f"{ind.get('ma20'):.2f}" if ind.get("ma20") is not None else "N/A")
-k4.metric("昨收基准", f"{quote.get('prev_close'):.2f}" if quote.get("prev_close") is not None else "N/A")
+def _fmt(v, nd=2):
+    return "N/A" if v is None else f"{v:.{nd}f}"
+
+macd_val = ind.get("macd_hist")
+rsi_val = ind.get("rsi6")
+ma20_val = ind.get("ma20")
+ref_val = quote.get("prev_close")
+
+macd_desc = "趋势偏强" if (macd_val is not None and macd_val > 0) else "趋势偏弱"
+rsi_desc = "超买区间" if (rsi_val is not None and rsi_val >= 70) else ("超卖区间" if (rsi_val is not None and rsi_val <= 30) else "强弱指标")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.markdown(
+    f'<div class="fast-card"><div class="t">MACD 柱</div><div class="v">{_fmt(macd_val, 3)}</div><div class="d">{macd_desc}</div></div>',
+    unsafe_allow_html=True,
+)
+c2.markdown(
+    f'<div class="fast-card"><div class="t">RSI (6)</div><div class="v">{_fmt(rsi_val, 2)}</div><div class="d">{rsi_desc}</div></div>',
+    unsafe_allow_html=True,
+)
+c3.markdown(
+    f'<div class="fast-card"><div class="t">MA20 线</div><div class="v">{_fmt(ma20_val, 2)}</div><div class="d">生命线</div></div>',
+    unsafe_allow_html=True,
+)
+c4.markdown(
+    f'<div class="fast-card"><div class="t">昨收基准</div><div class="v">{_fmt(ref_val, 2)}</div><div class="d">PCT Ref</div></div>',
+    unsafe_allow_html=True,
+)
 
 left, right = st.columns([2, 1])
 with left:
-    st.markdown("#### 资金分时")
+    st.markdown("## 资金分时")
     if intraday_df.empty:
         st.info("暂无分时资金数据")
     else:
         chart_df = intraday_df.set_index("time")
-        st.area_chart(chart_df["volume_lot"], width="stretch")
+        area_df = chart_df.reset_index()
+        chart = (
+            alt.Chart(area_df)
+            .mark_area(color="#22c55e", opacity=0.9)
+            .encode(
+                x=alt.X("time:T", title="time"),
+                y=alt.Y("volume_lot:Q", title="vol"),
+            )
+            .properties(height=330)
+        )
+        st.altair_chart(chart, use_container_width=True)
 
 with right:
-    st.markdown("#### 实时盘口（买5/卖5，单位: 手）")
+    st.markdown('<div class="ob-title">实时盘口 (单位:手)</div>', unsafe_allow_html=True)
     sell_df = pd.DataFrame(order_book_5.get("sell", []))
     buy_df = pd.DataFrame(order_book_5.get("buy", []))
 
@@ -183,16 +330,41 @@ with right:
     else:
         sell_df = sell_df.sort_values("level", ascending=False).copy()
         buy_df = buy_df.sort_values("level", ascending=True).copy()
-        sell_df["档位"] = sell_df["level"].map(lambda x: f"卖{x}")
-        buy_df["档位"] = buy_df["level"].map(lambda x: f"买{x}")
+        vol_max = max(
+            1.0,
+            max(pd.to_numeric(sell_df["volume_lot"], errors="coerce").fillna(0).max(), pd.to_numeric(buy_df["volume_lot"], errors="coerce").fillna(0).max()),
+        )
 
-        sell_show = sell_df[["档位", "price", "volume_lot"]].rename(
-            columns={"price": "价格", "volume_lot": "手数"}
+        def _ob_rows(df: pd.DataFrame, side: str) -> str:
+            rows_html = ""
+            for _, r in df.iterrows():
+                lvl = int(r.get("level", 0))
+                price = r.get("price")
+                vol = r.get("volume_lot")
+                vol_num = float(vol) if vol is not None and pd.notna(vol) else 0.0
+                width = int((vol_num / vol_max) * 100)
+                width = max(width, 1 if vol_num > 0 else 0)
+                lab_class = "ob-sell" if side == "sell" else "ob-buy"
+                side_txt = "卖" if side == "sell" else "买"
+                bar_class = "sell" if side == "sell" else "buy"
+                p_txt = f"{float(price):.2f}" if price is not None and pd.notna(price) else "--"
+                v_txt = f"{int(vol_num)}" if vol_num > 0 else "--"
+                rows_html += (
+                    f'<div class="ob-row">'
+                    f'<div class="ob-lab {lab_class}">{side_txt}{lvl}  {p_txt}</div>'
+                    f'<div class="ob-bar-wrap"><div class="ob-bar {bar_class}" style="width:{width}%"></div></div>'
+                    f'<div class="ob-vol">{v_txt}</div>'
+                    f"</div>"
+                )
+            return rows_html
+
+        html = (
+            '<div class="ob-block">'
+            + _ob_rows(sell_df, "sell")
+            + '<div class="ob-sep"></div>'
+            + _ob_rows(buy_df, "buy")
+            + "</div>"
         )
-        buy_show = buy_df[["档位", "price", "volume_lot"]].rename(
-            columns={"price": "价格", "volume_lot": "手数"}
-        )
-        st.dataframe(sell_show, width="stretch", hide_index=True)
-        st.dataframe(buy_show, width="stretch", hide_index=True)
+        st.markdown(html, unsafe_allow_html=True)
 
 st.caption(panel.get("depth_note", ""))
