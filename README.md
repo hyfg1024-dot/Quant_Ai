@@ -1,0 +1,69 @@
+# 股票观察面板（v1.0）
+
+一个面向个人投资者的本地量化看板：
+- `基本面`（慢引擎）：SQLite + AkShare
+- `交易面`（快引擎）：实时快照 + 分时 + 盘口
+
+## 3分钟安装指南
+
+### 0. 前置条件
+- 已安装 Python 3.9+
+- 可访问 GitHub
+
+### 1. 下载项目
+```bash
+git clone https://github.com/hyfg1024-dot/Quant_App.git
+cd Quant_App
+```
+
+不会 `git` 也可以：
+- 打开仓库页面 -> `Code` -> `Download ZIP`
+- 解压后进入项目目录
+
+### 2. 创建虚拟环境并安装依赖
+macOS / Linux:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows (PowerShell):
+```powershell
+python -m venv venv
+venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### 3. 启动
+```bash
+streamlit run app.py
+```
+
+浏览器打开终端显示的本地地址（通常是 `http://localhost:8501`）。
+
+## 使用说明（30秒）
+- 左侧输入股票代码或名称，点 `持仓` / `观察`
+- 页面上方是 `基本面`
+- 下方 `交易面` 可查看分时和实时盘口
+- 点 `复制JSON` 可把当前股票数据复制给其他 AI 分析
+
+## 常见问题
+- **安装慢/失败**：先升级 pip
+  ```bash
+  pip install -U pip
+  ```
+- **闭市时数据更新慢**：属于正常现象，交易时段刷新更及时
+- **端口被占用**：
+  ```bash
+  streamlit run app.py --server.port 8502
+  ```
+
+## 目录结构
+- `app.py`：Streamlit 前端
+- `slow_engine.py`：慢引擎（数据库/基本面/调度）
+- `fast_engine.py`：快引擎（实时行情/盘口/指标）
+- `data/`：SQLite 数据文件
+
+---
+如果你是第一次使用，按“3分钟安装指南”从上到下执行即可。
