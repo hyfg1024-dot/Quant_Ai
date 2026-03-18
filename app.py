@@ -416,7 +416,9 @@ def _render_fast_panel(selected_code: str, selected_name: str):
     export_json = json.dumps(_json_safe(export_payload), ensure_ascii=False, indent=2)
 
     js_text = json.dumps(export_json, ensure_ascii=False)
-    html(
+    btn_row = st.columns([1, 1, 6])
+    with btn_row[0]:
+        html(
         f"""
         <div style="margin: 0.2rem 0 0.4rem 0;">
           <button id="copy-json-btn-{selected_code}"
@@ -424,38 +426,29 @@ def _render_fast_panel(selected_code: str, selected_name: str):
             复制该股票JSON
           </button>
           <div id="copy-json-msg-{selected_code}" style="margin-top:0.5rem;color:#2e4b6e;font-size:0.95rem;"></div>
-          <textarea id="copy-json-fallback-{selected_code}"
-            style="display:none;width:100%;height:140px;margin-top:0.5rem;border:1px solid #b8cdea;border-radius:8px;padding:0.5rem;font-size:12px;">{export_json}</textarea>
         </div>
         <script>
           const btn = document.getElementById("copy-json-btn-{selected_code}");
           const msg = document.getElementById("copy-json-msg-{selected_code}");
-          const ta = document.getElementById("copy-json-fallback-{selected_code}");
           const text = {js_text};
 
           btn.onclick = async function () {{
             try {{
               await navigator.clipboard.writeText(text);
               msg.textContent = "已复制到剪贴板，可直接粘贴给其他 AI。";
-              ta.style.display = "none";
             }} catch (e) {{
-              ta.style.display = "block";
-              ta.value = text;
-              ta.focus();
-              ta.select();
-              try {{
-                document.execCommand("copy");
-                msg.textContent = "已尝试复制；若未成功，请按 Command+C 手动复制下方文本。";
-              }} catch (e2) {{
-                msg.textContent = "浏览器限制自动复制，请按 Command+C 手动复制下方文本。";
-              }}
+              msg.textContent = "浏览器限制复制，请点右侧 JSON预览 后手动复制。";
             }}
           }};
         </script>
         """,
-        height=320,
+        height=95,
     )
-    with st.expander("JSON预览", expanded=False):
+    preview_key = f"show_json_preview_{selected_code}"
+    with btn_row[1]:
+        if st.button("JSON预览", key=f"preview_btn_{selected_code}", use_container_width=False):
+            st.session_state[preview_key] = not st.session_state.get(preview_key, False)
+    if st.session_state.get(preview_key, False):
         st.code(export_json, language="json")
 
     def _fmt(v, nd=2):
