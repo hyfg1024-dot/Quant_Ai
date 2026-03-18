@@ -233,8 +233,26 @@ st.markdown(
         font-weight: 700 !important;
         margin-top: 0.1rem !important;
     }
-    .mini-del-wrap {
-        margin-top: -0.25rem !important;
+    .stock-del-wrap {
+        margin-top: 0.12rem !important;
+    }
+    .stock-del-wrap div.stButton > button {
+        min-height: 2.0rem !important;
+        border-radius: 10px !important;
+        border: 1px solid #9bb9e3 !important;
+        background: rgba(219, 234, 254, 0.3) !important;
+        color: #5d708a !important;
+        font-size: 1.05rem !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+    }
+    .stock-del-wrap div.stButton > button:hover,
+    .stock-del-wrap div.stButton > button:focus,
+    .stock-del-wrap div.stButton > button:active {
+        background: rgba(199, 221, 251, 0.55) !important;
+        color: #1f334f !important;
+        border: 1px solid #7ea7df !important;
+        box-shadow: none !important;
     }
     </style>
     """,
@@ -416,22 +434,19 @@ for start in range(0, len(rows), grid_cols):
                 st.session_state["fast_selected_name"] = row["name"]
             st.markdown("</div>", unsafe_allow_html=True)
 
-            del_row = st.columns([2, 1, 2], vertical_alignment="center")
-            with del_row[1]:
-                st.markdown('<div class="mini-del-wrap">', unsafe_allow_html=True)
-                if st.button(
-                    "🗑️",
-                    key=f"mini_del_{row['code']}",
-                    use_container_width=True,
-                    type="tertiary",
-                    help=f"删除 {row['name']}",
-                ):
-                    remove_stock_from_pool(row["code"])
-                    if st.session_state.get("fast_selected_code") == row["code"]:
-                        st.session_state.pop("fast_selected_code", None)
-                        st.session_state.pop("fast_selected_name", None)
-                    st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown('<div class="stock-del-wrap">', unsafe_allow_html=True)
+            if st.button(
+                "🗑️",
+                key=f"mini_del_{row['code']}",
+                use_container_width=True,
+                help=f"删除 {row['name']}",
+            ):
+                remove_stock_from_pool(row["code"])
+                if st.session_state.get("fast_selected_code") == row["code"]:
+                    st.session_state.pop("fast_selected_code", None)
+                    st.session_state.pop("fast_selected_name", None)
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
 with st.expander("管理观察池（删除）", expanded=False):
     del_options = [f"{r['name']} ({r['code']})" for r in rows]
