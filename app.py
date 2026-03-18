@@ -62,6 +62,13 @@ st.markdown(
         color: #1f334f !important;
         font-weight: 700 !important;
     }
+    [data-testid="stToggle"] label,
+    [data-testid="stToggle"] label span,
+    [data-testid="stToggle"] div,
+    [data-testid="stToggle"] p {
+        color: #1f334f !important;
+        opacity: 1 !important;
+    }
     .engine-divider {
         margin: 1.2rem 0 1rem 0;
         border-top: 2px solid #c7d3e3;
@@ -173,6 +180,11 @@ st.markdown(
         border-top: 1px solid #d7e0ec;
         margin: 0.5rem 0;
     }
+    .mini-del-wrap button {
+        min-height: 2.55rem !important;
+        padding: 0.25rem 0.2rem !important;
+        font-size: 1.05rem !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -221,6 +233,21 @@ if not rows:
 snapshot_df = pd.DataFrame(rows)
 snapshot_df = snapshot_df[["code", "name", "trade_date", "pe", "pb", "dividend_yield", "created_at"]]
 snapshot_df.columns = ["代码", "名称", "日期", "PE(TTM)", "PB", "股息率", "更新时间"]
+
+def _format_display_time(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    text = str(v).strip()
+    if not text:
+        return None
+    dt = pd.to_datetime(text, errors="coerce")
+    if pd.isna(dt):
+        dt = pd.to_datetime(text, format="%Y%m%d%H%M%S", errors="coerce")
+    if pd.isna(dt):
+        return None
+    return dt.strftime("%m-%d %H:%M:%S")
+
+snapshot_df["更新时间"] = snapshot_df["更新时间"].apply(_format_display_time)
 snapshot_df = snapshot_df.where(pd.notna(snapshot_df), pd.NA)
 
 st.subheader("慢引擎主面板")
@@ -256,12 +283,22 @@ if auto_refresh_on:
 else:
     st.caption("自动刷新已关闭")
 
-btn_cols = st.columns(min(3, max(1, len(rows))))
+btn_rows = st.columns(min(3, max(1, len(rows))))
 for idx, row in enumerate(rows):
-    col = btn_cols[idx % len(btn_cols)]
-    if col.button(f"{row['name']} ({row['code']})", key=f"open_fast_{row['code']}", use_container_width=True):
+    col = btn_rows[idx % len(btn_rows)]
+    open_col, del_col = col.columns([8, 1], vertical_alignment="center")
+    if open_col.button(f"{row['name']} ({row['code']})", key=f"open_fast_{row['code']}", use_container_width=True):
         st.session_state["fast_selected_code"] = row["code"]
         st.session_state["fast_selected_name"] = row["name"]
+    with del_col:
+        st.markdown('<div class="mini-del-wrap">', unsafe_allow_html=True)
+        if st.button("🗑", key=f"mini_del_{row['code']}", use_container_width=True, help=f"删除 {row['name']}"):
+            remove_stock_from_pool(row["code"])
+            if st.session_state.get("fast_selected_code") == row["code"]:
+                st.session_state.pop("fast_selected_code", None)
+                st.session_state.pop("fast_selected_name", None)
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 with st.expander("管理观察池（删除）", expanded=False):
     del_options = [f"{r['name']} ({r['code']})" for r in rows]
@@ -315,7 +352,8 @@ def _render_fast_panel(selected_code: str, selected_name: str):
             """,
             unsafe_allow_html=True,
         )
-        st.caption(f"更新时间: {quote.get('quote_time') or 'N/A'}")
+        q_time = _format_display_time(quote.get("quote_time"))
+        st.caption(f"更新时间: {q_time if q_time else 'N/A'}")
 
     def _fmt(v, nd=2):
         return "N/A" if v is None else f"{v:.{nd}f}"
