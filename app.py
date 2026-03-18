@@ -352,6 +352,11 @@ def _is_market_open(code: str) -> bool:
     # A股常规交易时段
     return (time(9, 30) <= t <= time(11, 30)) or (time(13, 0) <= t <= time(15, 0))
 
+
+@st.dialog("JSON 预览", width="large")
+def _show_json_dialog(payload_text: str):
+    st.code(payload_text, language="json")
+
 snapshot_df["更新时间"] = snapshot_df["更新时间"].apply(_format_display_time)
 snapshot_df = snapshot_df.where(pd.notna(snapshot_df), pd.NA)
 
@@ -516,70 +521,36 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
     export_json = json.dumps(_json_safe(export_payload), ensure_ascii=False, indent=2)
 
     js_text = json.dumps(export_json, ensure_ascii=False)
-    preview_html = (
-        export_json.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
-    html(
-        f"""
-        <div style="margin: 0.15rem 0 0.35rem 0;">
-          <div style="display:flex;align-items:center;gap:10px;">
-          <button id="copy-json-btn-{selected_code}"
-            style="height:44px;padding:0 0.95rem;border-radius:10px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:1.05rem;font-weight:700;cursor:pointer;white-space:nowrap;">
-            复制JSON
-          </button>
-          <button id="preview-json-btn-{selected_code}"
-            style="height:44px;padding:0 0.95rem;border-radius:10px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:1.05rem;font-weight:700;cursor:pointer;white-space:nowrap;">
-            JSON预览
-          </button>
-          </div>
-          <div id="copy-json-msg-{selected_code}" style="margin-top:0.45rem;color:#2e4b6e;font-size:0.92rem;"></div>
-          <link rel="stylesheet"
-                href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
-          <pre id="json-preview-box-{selected_code}" style="display:none;margin-top:0.5rem;padding:0.6rem;border-radius:8px;border:1px solid #b8cdea;background:#f7fbff;max-height:260px;overflow:auto;font-size:12px;line-height:1.35;"><code id="json-code-{selected_code}" class="language-json">{preview_html}</code></pre>
-        </div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-        <script>
-          const btn = document.getElementById("copy-json-btn-{selected_code}");
-          const previewBtn = document.getElementById("preview-json-btn-{selected_code}");
-          const box = document.getElementById("json-preview-box-{selected_code}");
-          const codeBox = document.getElementById("json-code-{selected_code}");
-          const msg = document.getElementById("copy-json-msg-{selected_code}");
-          const text = {js_text};
-          const frame = window.frameElement;
-
-          function resizeFrame() {{
-            if (frame) {{
-              frame.style.height = (document.body.scrollHeight + 10) + "px";
-            }}
-          }}
-
-          btn.onclick = async function () {{
-            try {{
-              await navigator.clipboard.writeText(text);
-              msg.textContent = "已复制到剪贴板，可直接粘贴给其他 AI。";
-            }} catch (e) {{
-              msg.textContent = "浏览器限制复制，请点 JSON预览 后手动复制。";
-            }}
-            resizeFrame();
-          }};
-
-          previewBtn.onclick = function () {{
-            const opening = box.style.display === "none";
-            box.style.display = opening ? "block" : "none";
-            previewBtn.textContent = opening ? "收起预览" : "JSON预览";
-            if (opening && window.hljs) {{
-              window.hljs.highlightElement(codeBox);
-            }}
-            resizeFrame();
-          }};
-
-          resizeFrame();
-        </script>
-        """,
-        height=78,
-    )
+    btn_cols = st.columns([1.15, 1.15, 5], vertical_alignment="center")
+    with btn_cols[0]:
+        html(
+            f"""
+            <div style="margin:0.15rem 0 0.35rem 0;">
+              <button id="copy-json-btn-{selected_code}"
+                style="height:44px;padding:0 0.95rem;border-radius:10px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:1.05rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+                复制JSON
+              </button>
+              <div id="copy-json-msg-{selected_code}" style="margin-top:0.45rem;color:#2e4b6e;font-size:0.92rem;"></div>
+            </div>
+            <script>
+              const btn = document.getElementById("copy-json-btn-{selected_code}");
+              const msg = document.getElementById("copy-json-msg-{selected_code}");
+              const text = {js_text};
+              btn.onclick = async function () {{
+                try {{
+                  await navigator.clipboard.writeText(text);
+                  msg.textContent = "已复制";
+                }} catch (e) {{
+                  msg.textContent = "复制失败，请重试";
+                }}
+              }};
+            </script>
+            """,
+            height=78,
+        )
+    with btn_cols[1]:
+        if st.button("JSON预览", key=f"json_preview_btn_{selected_code}", use_container_width=True):
+            _show_json_dialog(export_json)
 
     def _fmt(v, nd=2):
         return "N/A" if v is None else f"{v:.{nd}f}"
