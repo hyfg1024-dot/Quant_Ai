@@ -109,13 +109,24 @@ def init_db() -> None:
 
 
 def upsert_stock_pool(stock_pool: List[Tuple[str, str]] = STOCK_POOL) -> None:
+    init_db()
+    with _connect() as conn:
+        existing_group_map = {
+            str(code): _normalize_pool_group(pool_group)
+            for code, pool_group in conn.execute("SELECT code, pool_group FROM stock_info").fetchall()
+        }
+
     records: List[Tuple[str, str, str]] = []
     for item in stock_pool:
         if len(item) < 2:
             continue
         code = str(item[0]).strip()
         name = str(item[1]).strip()
-        pool_group = _normalize_pool_group(item[2] if len(item) >= 3 else "watch")
+        if len(item) >= 3:
+            pool_group = _normalize_pool_group(item[2])
+        else:
+            # 仅传 code/name 时，保留已有分组，避免把“持仓”误写回“观察”
+            pool_group = existing_group_map.get(code, "watch")
         if code and name:
             records.append((code, name, pool_group))
 
@@ -612,8 +623,14 @@ def update_fundamental_data(stock_pool: Optional[List[Tuple[str, str]]] = None) 
     else:
         upsert_stock_pool(stock_pool)
 
+    normalized_pool: List[Tuple[str, str]] = []
+    for item in stock_pool:
+        if len(item) < 2:
+            continue
+        normalized_pool.append((str(item[0]).strip(), str(item[1]).strip()))
+
     rows: List[Dict] = []
-    for code, name in stock_pool:
+    for code, name in normalized_pool:
         row = fetch_latest_fundamental(code, name)
         save_fundamental(row)
         rows.append(row)

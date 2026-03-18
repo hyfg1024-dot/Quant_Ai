@@ -294,7 +294,7 @@ if add_holding or add_watch:
     group_text = "持仓" if pool_group == "holding" else "观察"
     try:
         code, name = add_stock_by_query(new_query, pool_group=pool_group)
-        update_fundamental_data([(code, name)])
+        update_fundamental_data([(code, name, pool_group)])
         st.sidebar.success(f"已加入{group_text}: {code} - {name}")
         st.rerun()
     except Exception as exc:
