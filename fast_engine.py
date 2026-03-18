@@ -270,8 +270,9 @@ def fetch_fast_panel(symbol: str) -> Dict:
         "quote": quote,
         "indicators": indicators,
         "intraday": intraday_df,
+        "order_book_5": quote.get("order_book_5", {"buy": [], "sell": []}),
         "order_book_10": quote.get("order_book_10", {"buy": [], "sell": []}),
-        "depth_note": "公开免费接口稳定提供买5卖5；买6-买10/卖6-卖10当前显示为占位。",
+        "depth_note": "当前使用公开免费接口的买5卖5盘口数据。",
         "error": " | ".join(errors) if errors else None,
     }
 

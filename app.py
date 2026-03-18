@@ -146,7 +146,7 @@ panel = fetch_fast_panel(selected_code)
 quote = panel["quote"]
 ind = panel["indicators"]
 intraday_df = panel["intraday"]
-order_book_10 = panel["order_book_10"]
+order_book_5 = panel["order_book_5"]
 
 if panel.get("error") and not quote.get("current_price"):
     st.warning(f"快引擎数据拉取失败: {panel['error']}")
@@ -174,9 +174,9 @@ with left:
         st.area_chart(chart_df["volume_lot"], width="stretch")
 
 with right:
-    st.markdown("#### 实时盘口（买10/卖10，单位: 手）")
-    sell_df = pd.DataFrame(order_book_10.get("sell", []))
-    buy_df = pd.DataFrame(order_book_10.get("buy", []))
+    st.markdown("#### 实时盘口（买5/卖5，单位: 手）")
+    sell_df = pd.DataFrame(order_book_5.get("sell", []))
+    buy_df = pd.DataFrame(order_book_5.get("buy", []))
 
     if sell_df.empty or buy_df.empty:
         st.info("暂无盘口数据")
