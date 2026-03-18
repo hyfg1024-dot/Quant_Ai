@@ -45,13 +45,13 @@ st.markdown(
         color: #e8eef8 !important;
     }
     h1, h2, h3, h4 { color: var(--text-strong) !important; }
-    .stButton > button {
+    .stButton > button:not([kind="tertiary"]) {
         background: #dbeafe;
         color: #0f2a52;
         border: 1px solid #a8c2e8;
         font-weight: 600;
     }
-    .stButton > button:hover {
+    .stButton > button:not([kind="tertiary"]):hover {
         background: #c7ddfb;
         color: #0b2346;
     }
@@ -379,7 +379,13 @@ for idx, row in enumerate(rows):
     del_row = col.columns([3, 2, 3])
     with del_row[1]:
         st.markdown('<div class="mini-del-wrap">', unsafe_allow_html=True)
-        if st.button("🗑️", key=f"mini_del_{row['code']}", use_container_width=False, help=f"删除 {row['name']}"):
+        if st.button(
+            "🗑️",
+            key=f"mini_del_{row['code']}",
+            use_container_width=False,
+            type="tertiary",
+            help=f"删除 {row['name']}",
+        ):
             remove_stock_from_pool(row["code"])
             if st.session_state.get("fast_selected_code") == row["code"]:
                 st.session_state.pop("fast_selected_code", None)
