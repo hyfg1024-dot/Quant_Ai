@@ -535,12 +535,16 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
           </button>
           </div>
           <div id="copy-json-msg-{selected_code}" style="margin-top:0.45rem;color:#2e4b6e;font-size:0.92rem;"></div>
-          <pre id="json-preview-box-{selected_code}" style="display:none;margin-top:0.5rem;padding:0.6rem;border-radius:8px;border:1px solid #b8cdea;background:#f7fbff;max-height:260px;overflow:auto;font-size:12px;line-height:1.35;">{preview_html}</pre>
+          <link rel="stylesheet"
+                href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
+          <pre id="json-preview-box-{selected_code}" style="display:none;margin-top:0.5rem;padding:0.6rem;border-radius:8px;border:1px solid #b8cdea;background:#f7fbff;max-height:260px;overflow:auto;font-size:12px;line-height:1.35;"><code id="json-code-{selected_code}" class="language-json">{preview_html}</code></pre>
         </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
         <script>
           const btn = document.getElementById("copy-json-btn-{selected_code}");
           const previewBtn = document.getElementById("preview-json-btn-{selected_code}");
           const box = document.getElementById("json-preview-box-{selected_code}");
+          const codeBox = document.getElementById("json-code-{selected_code}");
           const msg = document.getElementById("copy-json-msg-{selected_code}");
           const text = {js_text};
           const frame = window.frameElement;
@@ -565,6 +569,9 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
             const opening = box.style.display === "none";
             box.style.display = opening ? "block" : "none";
             previewBtn.textContent = opening ? "收起预览" : "JSON预览";
+            if (opening && window.hljs) {{
+              window.hljs.highlightElement(codeBox);
+            }}
             resizeFrame();
           }};
 
