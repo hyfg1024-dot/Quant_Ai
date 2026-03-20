@@ -129,12 +129,19 @@ def _parse_tencent_fields(symbol: str, fields: List[str]) -> Dict:
         "name": name,
         "current_price": current_price,
         "prev_close": prev_close,
+        "open": _to_float(fields[5]),
         "change_amount": change_amount,
         "change_pct": change_pct,
         "high": _to_float(fields[33]),
         "low": _to_float(fields[34]),
         "volume": volume,
         "amount": amount,
+        "turnover_rate": _to_float(fields[38]),
+        "amplitude_pct": _to_float(fields[43]),
+        "float_market_value_yi": _to_float(fields[44]),
+        "total_market_value_yi": _to_float(fields[45]),
+        "volume_ratio": _to_float(fields[49]),
+        "order_diff": _to_float(fields[50]),
         "vwap": vwap,
         "premium_pct": premium_pct,
         "quote_time": quote_time,
@@ -174,12 +181,19 @@ def fetch_realtime_quote(symbol: str) -> Dict:
             "name": normalized,
             "current_price": None,
             "prev_close": None,
+            "open": None,
             "change_amount": None,
             "change_pct": None,
             "high": None,
             "low": None,
             "volume": None,
             "amount": None,
+            "turnover_rate": None,
+            "amplitude_pct": None,
+            "float_market_value_yi": None,
+            "total_market_value_yi": None,
+            "volume_ratio": None,
+            "order_diff": None,
             "vwap": None,
             "premium_pct": None,
             "quote_time": None,
@@ -238,20 +252,45 @@ def _calc_rsi(close: pd.Series, period: int = 6) -> pd.Series:
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-
-    avg_gain = gain.rolling(period, min_periods=period).mean()
-    avg_loss = loss.rolling(period, min_periods=period).mean()
-
+    # 使用 Wilder/SMA 递推口径（SMA(X, N, 1)），更接近主流券商终端 RSI 结果
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
     rs = avg_gain / avg_loss.replace(0, pd.NA)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    return 100 - (100 / (1 + rs))
 
 
-def _calc_indicators_from_ohlcv(df: pd.DataFrame) -> Dict[str, Optional[float]]:
-    close = pd.to_numeric(df["close"], errors="coerce")
-    close = close.dropna().reset_index(drop=True)
+def _calc_rsi_set(close: pd.Series) -> Dict[str, Optional[float]]:
+    close = pd.to_numeric(close, errors="coerce").dropna().reset_index(drop=True)
     if close.empty:
-        raise ValueError("No valid close prices")
+        return {"rsi6": None, "rsi12": None, "rsi24": None}
+    rsi6 = _calc_rsi(close, period=6)
+    rsi12 = _calc_rsi(close, period=12)
+    rsi24 = _calc_rsi(close, period=24)
+    return {
+        "rsi6": _to_float(rsi6.iloc[-1]),
+        "rsi12": _to_float(rsi12.iloc[-1]),
+        "rsi24": _to_float(rsi24.iloc[-1]),
+    }
+
+
+def _calc_indicator_set_from_close(close: pd.Series) -> Dict[str, Optional[float]]:
+    close = pd.to_numeric(close, errors="coerce").dropna().reset_index(drop=True)
+    if close.empty:
+        return {
+            "rsi6": None,
+            "rsi12": None,
+            "rsi24": None,
+            "ma5": None,
+            "ma10": None,
+            "ma20": None,
+            "ma60": None,
+            "macd_hist": None,
+            "boll_mid": None,
+            "boll_upper": None,
+            "boll_lower": None,
+            "boll_pct_b": None,
+            "boll_bandwidth": None,
+        }
 
     ema12 = close.ewm(span=12, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
@@ -260,13 +299,134 @@ def _calc_indicators_from_ohlcv(df: pd.DataFrame) -> Dict[str, Optional[float]]:
     macd_hist = (dif - dea) * 2
 
     rsi6 = _calc_rsi(close, period=6)
+    rsi12 = _calc_rsi(close, period=12)
+    rsi24 = _calc_rsi(close, period=24)
+    ma5 = close.rolling(5, min_periods=5).mean()
+    ma10 = close.rolling(10, min_periods=10).mean()
     ma20 = close.rolling(20, min_periods=20).mean()
+    ma60 = close.rolling(60, min_periods=60).mean()
+    boll_mid = ma20
+    boll_std = close.rolling(20, min_periods=20).std(ddof=0)
+    boll_upper = boll_mid + 2 * boll_std
+    boll_lower = boll_mid - 2 * boll_std
+
+    latest_close = _to_float(close.iloc[-1]) if not close.empty else None
+    latest_upper = _to_float(boll_upper.iloc[-1]) if not boll_upper.empty else None
+    latest_lower = _to_float(boll_lower.iloc[-1]) if not boll_lower.empty else None
+    boll_pct_b = None
+    boll_bandwidth = None
+    if latest_close is not None and latest_upper is not None and latest_lower is not None:
+        spread = latest_upper - latest_lower
+        if spread > 0:
+            boll_pct_b = (latest_close - latest_lower) / spread * 100
+        mid = _to_float(boll_mid.iloc[-1])
+        if mid is not None and mid != 0:
+            boll_bandwidth = spread / mid * 100
 
     return {
         "macd_hist": _to_float(macd_hist.iloc[-1]),
         "rsi6": _to_float(rsi6.iloc[-1]),
+        "rsi12": _to_float(rsi12.iloc[-1]),
+        "rsi24": _to_float(rsi24.iloc[-1]),
+        "ma5": _to_float(ma5.iloc[-1]),
+        "ma10": _to_float(ma10.iloc[-1]),
         "ma20": _to_float(ma20.iloc[-1]),
+        "ma60": _to_float(ma60.iloc[-1]),
+        "boll_mid": _to_float(boll_mid.iloc[-1]),
+        "boll_upper": latest_upper,
+        "boll_lower": latest_lower,
+        "boll_pct_b": boll_pct_b,
+        "boll_bandwidth": boll_bandwidth,
     }
+
+
+def _calc_indicators_from_ohlcv(df: pd.DataFrame) -> Dict[str, Optional[float]]:
+    close = pd.to_numeric(df["close"], errors="coerce")
+    close = close.dropna().reset_index(drop=True)
+    if close.empty:
+        raise ValueError("No valid close prices")
+    return _calc_indicator_set_from_close(close)
+
+
+def _fetch_daily_close_series(symbol: str, count: int = 320) -> pd.Series:
+    exchange, normalized = _resolve_market(symbol)
+    url = TENCENT_DAILY_URL.format(exchange=exchange, symbol=normalized, count=count)
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+    resp.raise_for_status()
+    payload = resp.json()
+    code_key = f"{exchange}{normalized}"
+    kline_data = payload.get("data", {}).get(code_key, {}).get("qfqday", [])
+    if not kline_data and exchange == "hk":
+        hk = _fetch_hk_daily_ohlcv(normalized).copy()
+        hk.index = pd.to_datetime(hk.index, errors="coerce")
+        hk = hk.dropna(subset=["close"]).sort_index()
+        if not hk.empty:
+            return pd.to_numeric(hk["close"], errors="coerce").dropna()
+        raise ValueError("No daily close series")
+
+    rows = [row[:3] for row in kline_data if len(row) >= 3]
+    if not rows:
+        raise ValueError("No daily close series")
+    df = pd.DataFrame(rows, columns=["date", "open", "close"])
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["date", "close"]).set_index("date").sort_index()
+    if df.empty:
+        raise ValueError("No daily close series")
+    return df["close"]
+
+
+def fetch_multi_timeframe_rsi(symbol: str, intraday_df: Optional[pd.DataFrame] = None) -> Dict[str, Dict[str, Optional[float]]]:
+    result = {
+        "day": {"rsi6": None, "rsi12": None, "rsi24": None},
+        "week": {"rsi6": None, "rsi12": None, "rsi24": None},
+        "month": {"rsi6": None, "rsi12": None, "rsi24": None},
+        "intraday": {"rsi6": None, "rsi12": None, "rsi24": None},
+    }
+    try:
+        daily_close = _fetch_daily_close_series(symbol, count=320)
+        result["day"] = _calc_rsi_set(daily_close)
+        result["week"] = _calc_rsi_set(daily_close.resample("W-FRI").last().dropna())
+        result["month"] = _calc_rsi_set(daily_close.resample("M").last().dropna())
+    except Exception:
+        pass
+
+    try:
+        if intraday_df is not None and not intraday_df.empty and "price" in intraday_df.columns:
+            intra_close = pd.to_numeric(intraday_df["price"], errors="coerce").dropna()
+            if not intra_close.empty:
+                result["intraday"] = _calc_rsi_set(intra_close)
+    except Exception:
+        pass
+
+    return result
+
+
+def fetch_multi_timeframe_indicators(symbol: str, intraday_df: Optional[pd.DataFrame] = None) -> Dict[str, Dict[str, Optional[float]]]:
+    empty = _calc_indicator_set_from_close(pd.Series(dtype=float))
+    result: Dict[str, Dict[str, Optional[float]]] = {
+        "day": empty.copy(),
+        "week": empty.copy(),
+        "month": empty.copy(),
+        "intraday": empty.copy(),
+    }
+    try:
+        daily_close = _fetch_daily_close_series(symbol, count=320)
+        result["day"] = _calc_indicator_set_from_close(daily_close)
+        result["week"] = _calc_indicator_set_from_close(daily_close.resample("W-FRI").last().dropna())
+        result["month"] = _calc_indicator_set_from_close(daily_close.resample("M").last().dropna())
+    except Exception:
+        pass
+
+    try:
+        if intraday_df is not None and not intraday_df.empty and "price" in intraday_df.columns:
+            intra_close = pd.to_numeric(intraday_df["price"], errors="coerce").dropna()
+            if not intra_close.empty:
+                result["intraday"] = _calc_indicator_set_from_close(intra_close)
+    except Exception:
+        pass
+
+    return result
 
 
 def _fetch_hk_daily_ohlcv(symbol: str) -> pd.DataFrame:
@@ -306,7 +466,21 @@ def fetch_fast_panel(symbol: str) -> Dict:
     quote = fetch_realtime_quote(symbol)
 
     intraday_df = pd.DataFrame(columns=["time", "price", "volume_lot", "amount"])
-    indicators = {"macd_hist": None, "rsi6": None, "ma20": None}
+    indicators = {
+        "macd_hist": None,
+        "rsi6": None,
+        "rsi12": None,
+        "rsi24": None,
+        "ma5": None,
+        "ma10": None,
+        "ma20": None,
+        "ma60": None,
+        "boll_mid": None,
+        "boll_upper": None,
+        "boll_lower": None,
+        "boll_pct_b": None,
+        "boll_bandwidth": None,
+    }
     errors = []
 
     try:
@@ -318,6 +492,12 @@ def fetch_fast_panel(symbol: str) -> Dict:
         indicators = fetch_technical_indicators(symbol)
     except Exception as exc:
         errors.append(f"indicators: {exc}")
+
+    tf_indicators = fetch_multi_timeframe_indicators(symbol, intraday_df=intraday_df)
+    rsi_multi = {
+        k: {"rsi6": v.get("rsi6"), "rsi12": v.get("rsi12"), "rsi24": v.get("rsi24")}
+        for k, v in tf_indicators.items()
+    }
 
     if quote.get("error"):
         errors.append(f"quote: {quote['error']}")
@@ -342,6 +522,8 @@ def fetch_fast_panel(symbol: str) -> Dict:
         "intraday": intraday_df,
         "order_book_5": ob5,
         "order_book_10": quote.get("order_book_10", {"buy": [], "sell": []}),
+        "rsi_multi": rsi_multi,
+        "tf_indicators": tf_indicators,
         "depth_note": depth_note,
         "error": " | ".join(errors) if errors else None,
     }
