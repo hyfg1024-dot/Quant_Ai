@@ -1,11 +1,19 @@
+import base64
 import json
 import math
+import os
+import re
+import time as pytime
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 import altair as alt
 import pandas as pd
+import requests
 import streamlit as st
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, OpenAI, RateLimitError
 from streamlit.components.v1 import html
 
 from fast_engine import fetch_fast_panel
@@ -19,7 +27,33 @@ from slow_engine import (
 )
 
 st.set_page_config(page_title="Quant Dashboard", page_icon="📊", layout="wide")
-APP_VERSION = "QDB-20260320-06"
+APP_VERSION = "QDB-20260320-15"
+DEEPSEEK_SYSTEM_PROMPT = """你是一个专业的股票分析师。必须严格按照【五维分析框架】分析：
+
+【五维分析框架】
+一、核心数据摘要表格
+- 行情指标：现价/涨跌幅/高低点/量比/换手率
+- 资金指标：委差/买卖失衡比/盘口结构
+- 估值指标：PE/PB/股息率/市值
+- 技术指标：RSI/MACD/均线/布林带
+
+二、五组数据交叉分析
+1. 量价关系：价格涨跌 + 量比 + 委差 + 成交量
+2. 多周期共振：日线/周线/月线/日内RSI和MACD对比
+3. 估值与股息：PE + 股息率 + PB + 市值
+4. 均线与布林带：现价 + MA5/MA10/MA20/MA60 + 布林带位置
+5. 盘口与日内：委差 + 高低点 + 收盘价
+
+三、综合结论与三种情景概率
+- 3个关键结论要点
+- 乐观情景(概率+条件+目标)
+- 中性情景(概率+条件+区间)
+- 悲观情景(概率+条件+支撑)
+
+四、操作策略建议表格
+五、数据潜力挖掘说明
+
+要求：简洁、数据驱动、每部分控制在200字以内"""
 
 st.markdown(
     """
@@ -205,6 +239,14 @@ st.markdown(
         margin: 0 0 0.5rem 0;
         letter-spacing: 0.2px;
     }
+    .panel-title .unit-sub {
+        display: block;
+        font-size: 1.15rem;
+        line-height: 1.15;
+        font-weight: 700;
+        color: #5f738f;
+        margin-top: 0.12rem;
+    }
     .fast-panels-gap {
         height: 0.75rem;
     }
@@ -364,6 +406,20 @@ if add_holding or add_watch:
     except Exception as exc:
         st.sidebar.error(f"添加失败: {exc}")
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("DeepSeek API")
+analysis_user_input = st.sidebar.text_input(
+    "用户名（用于区分不同使用者）",
+    value="",
+    key="deepseek_user_input",
+)
+analysis_api_key_input = st.sidebar.text_input(
+    "API Key（可留空，读取环境变量）",
+    value="",
+    type="password",
+    key="deepseek_api_key_input",
+)
+
 if st.button("刷新慢引擎数据"):
     with st.spinner("正在更新慢引擎数据..."):
         update_fundamental_data()
@@ -431,6 +487,167 @@ def _json_safe(v):
     return v
 
 
+def _build_analysis_payload(payload: dict) -> dict:
+    """构造给 DeepSeek 的轻量快照，避免超大 JSON 导致连接中断。"""
+    safe = _json_safe(payload)
+    out = {
+        "meta": safe.get("meta", {}),
+        "stock": safe.get("stock", {}),
+        "slow_engine": safe.get("slow_engine", {}),
+        "fast_engine": {},
+    }
+    fe = safe.get("fast_engine", {}) or {}
+    out["fast_engine"]["quote"] = fe.get("quote")
+    out["fast_engine"]["indicators"] = fe.get("indicators")
+    out["fast_engine"]["rsi_multi"] = fe.get("rsi_multi")
+    out["fast_engine"]["tf_indicators"] = fe.get("tf_indicators")
+    out["fast_engine"]["order_book_5"] = fe.get("order_book_5")
+    out["fast_engine"]["compact_metrics"] = fe.get("compact_metrics")
+    out["fast_engine"]["cards_snapshot"] = fe.get("cards_snapshot")
+    out["fast_engine"]["depth_note"] = fe.get("depth_note")
+    out["fast_engine"]["error"] = fe.get("error")
+
+    intraday = fe.get("intraday")
+    if isinstance(intraday, list):
+        # 保留最近120条分时明细用于日内分析，避免请求过大
+        out["fast_engine"]["intraday_recent"] = intraday[-120:]
+        out["fast_engine"]["intraday_count"] = len(intraday)
+    return out
+
+
+def _resolve_deepseek_api_key() -> str:
+    raw = ""
+    if st.session_state.get("deepseek_api_key_input"):
+        raw = str(st.session_state["deepseek_api_key_input"])
+    elif "DEEPSEEK_API_KEY" in st.secrets:
+        raw = str(st.secrets["DEEPSEEK_API_KEY"])
+    else:
+        raw = os.getenv("DEEPSEEK_API_KEY", "")
+
+    key = raw.strip().split()[0] if raw.strip() else ""
+    # 常见粘贴错误：中文引号/括号/注释混入
+    key = key.strip("“”\"'`")
+    return key
+
+
+def _validate_api_key(key: str) -> None:
+    if not key:
+        raise RuntimeError("未配置 DEEPSEEK_API_KEY。请在侧栏填写，或设置环境变量 DEEPSEEK_API_KEY。")
+    if not key.startswith("sk-"):
+        raise RuntimeError("API Key 格式异常：应以 sk- 开头。")
+    if not re.fullmatch(r"sk-[A-Za-z0-9._-]+", key):
+        raise RuntimeError("API Key 包含非法字符（可能混入中文符号/空格）。请重新粘贴纯 key。")
+
+
+def _call_deepseek_analysis(json_text: str) -> tuple[str, dict, float, float]:
+    api_key = _resolve_deepseek_api_key()
+    _validate_api_key(api_key)
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0, max_retries=0)
+
+    messages = [
+        {"role": "system", "content": DEEPSEEK_SYSTEM_PROMPT},
+        {"role": "user", "content": json_text},
+    ]
+    t0 = pytime.time()
+    last_conn_error = None
+    response = None
+
+    for attempt in range(1, 5):
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=1500,
+                top_p=0.9,
+            )
+            break
+        except (APIConnectionError, APITimeoutError) as exc:
+            last_conn_error = exc
+            if attempt < 4:
+                pytime.sleep(0.8 * attempt)
+                continue
+        except Exception:
+            raise
+
+    if response is None:
+        # 兜底直连请求，规避 SDK 在个别网络环境下的连接异常
+        url = "https://api.deepseek.com/v1/chat/completions"
+        payload = {
+            "model": "deepseek-chat",
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 1500,
+            "top_p": 0.9,
+        }
+        try:
+            session = requests.Session()
+            retry = Retry(
+                total=4,
+                connect=4,
+                read=4,
+                backoff_factor=0.8,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=frozenset(["POST"]),
+                raise_on_status=False,
+            )
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount("https://", adapter)
+            r = session.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "Connection": "close",
+                    "Accept-Encoding": "identity",
+                },
+                json=payload,
+                timeout=(20, 90),
+            )
+            r.raise_for_status()
+            raw = r.json()
+        except requests.exceptions.RequestException as req_exc:
+            raise RuntimeError(f"网络重试与直连兜底均失败: {req_exc}; 上次SDK异常: {last_conn_error}") from req_exc
+
+        report = (((raw.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        if not report:
+            raise RuntimeError("DeepSeek 未返回有效分析内容（直连兜底）")
+
+        usage_raw = raw.get("usage") or {}
+        cache_hit_tokens = int(usage_raw.get("prompt_cache_hit_tokens") or 0)
+        cache_miss_tokens = int(usage_raw.get("prompt_cache_miss_tokens") or 0)
+        completion_tokens = int(usage_raw.get("completion_tokens") or 0)
+        prompt_tokens = int(usage_raw.get("prompt_tokens") or 0)
+        elapsed = pytime.time() - t0
+    else:
+        elapsed = pytime.time() - t0
+
+        usage = response.usage
+        cache_hit_tokens = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
+        cache_miss_tokens = getattr(usage, "prompt_cache_miss_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        report = (response.choices[0].message.content or "").strip()
+
+    cost = (
+        cache_hit_tokens / 1_000_000 * 0.028
+        + cache_miss_tokens / 1_000_000 * 0.28
+        + completion_tokens / 1_000_000 * 0.42
+    )
+
+    if not report:
+        raise RuntimeError("DeepSeek 未返回有效分析内容")
+
+    usage_dict = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": (prompt_tokens + completion_tokens),
+        "prompt_cache_hit_tokens": cache_hit_tokens,
+        "prompt_cache_miss_tokens": cache_miss_tokens,
+    }
+    return report, usage_dict, cost, elapsed
+
+
 def _is_hk_code(code: str) -> bool:
     digits = "".join(ch for ch in str(code).strip() if ch.isdigit())
     return len(digits) == 5
@@ -464,6 +681,16 @@ st.dataframe(styled, width="stretch", hide_index=True)
 if "fast_selected_code" not in st.session_state:
     st.session_state["fast_selected_code"] = rows[0]["code"]
     st.session_state["fast_selected_name"] = rows[0]["name"]
+if "analysis_result_text" not in st.session_state:
+    st.session_state["analysis_result_text"] = ""
+if "analysis_result_title" not in st.session_state:
+    st.session_state["analysis_result_title"] = ""
+if "analysis_result_time" not in st.session_state:
+    st.session_state["analysis_result_time"] = ""
+if "analysis_show_dialog" not in st.session_state:
+    st.session_state["analysis_show_dialog"] = False
+if "analysis_result_stats" not in st.session_state:
+    st.session_state["analysis_result_stats"] = {}
 
 selected_code_for_ctrl = st.session_state["fast_selected_code"]
 market_open_for_ctrl = _is_market_open(selected_code_for_ctrl)
@@ -982,6 +1209,7 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
         "meta": {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "app": "Quant",
+            "analysis_user": (st.session_state.get("deepseek_user_input", "") or "").strip(),
         },
         "stock": {"code": selected_code, "name": selected_name},
         "slow_engine": selected_slow,
@@ -999,13 +1227,15 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
         },
     }
     export_json = json.dumps(_json_safe(export_payload), ensure_ascii=False, indent=2)
-    js_text = json.dumps(export_json, ensure_ascii=False)
+    analysis_payload = _build_analysis_payload(export_payload)
+    analysis_json = json.dumps(analysis_payload, ensure_ascii=True, separators=(",", ":"))
+    json_b64 = base64.b64encode(export_json.encode("utf-8")).decode("ascii")
 
     if copy_slot is not None:
         with copy_slot:
             html(
                 f"""
-                <div style="margin:1.05rem 0 0 0;">
+                <div style="margin:0.1rem 0 0.45rem 0;">
                   <button id="copy-json-btn-{selected_code}"
                     style="width:100%;height:44px;padding:0 0.95rem;border-radius:10px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:1.05rem;font-weight:700;cursor:pointer;white-space:nowrap;">
                     复制JSON
@@ -1015,7 +1245,8 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
                 <script>
                   const btn = document.getElementById("copy-json-btn-{selected_code}");
                   const msg = document.getElementById("copy-json-msg-{selected_code}");
-                  const text = {js_text};
+                  const b64 = "{json_b64}";
+                  const text = decodeURIComponent(escape(window.atob(b64)));
                   btn.onclick = async function () {{
                     try {{
                       await navigator.clipboard.writeText(text);
@@ -1026,8 +1257,58 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
                   }};
                 </script>
                 """,
-                height=90,
+                height=96,
             )
+            if st.button("DeepSeek分析", key=f"deepseek_analyze_{selected_code}", use_container_width=True):
+                progress = st.progress(0, text="准备快照...")
+                try:
+                    progress.progress(45, text="调用 DeepSeek 分析中...")
+                    with st.spinner("正在分析，请稍候..."):
+                        result, usage_stats, est_cost, elapsed = _call_deepseek_analysis(json_text=analysis_json)
+                    progress.progress(100, text="分析完成")
+                    st.session_state["analysis_result_text"] = result
+                    st.session_state["analysis_result_title"] = f"{selected_name} ({selected_code})"
+                    st.session_state["analysis_result_time"] = datetime.now().strftime("%m-%d %H:%M:%S")
+                    st.session_state["analysis_result_stats"] = {
+                        "usage": usage_stats,
+                        "cost": est_cost,
+                        "elapsed": elapsed,
+                    }
+                    st.session_state["analysis_show_dialog"] = True
+                    progress.empty()
+                except AuthenticationError:
+                    progress.empty()
+                    st.session_state["analysis_result_text"] = "DeepSeek 认证失败：API Key 无效或已过期。"
+                    st.session_state["analysis_result_title"] = f"{selected_name} ({selected_code})"
+                    st.session_state["analysis_result_time"] = datetime.now().strftime("%m-%d %H:%M:%S")
+                    st.session_state["analysis_show_dialog"] = True
+                except RateLimitError:
+                    progress.empty()
+                    st.session_state["analysis_result_text"] = "DeepSeek 限流：请求过快，请稍后重试。"
+                    st.session_state["analysis_result_title"] = f"{selected_name} ({selected_code})"
+                    st.session_state["analysis_result_time"] = datetime.now().strftime("%m-%d %H:%M:%S")
+                    st.session_state["analysis_show_dialog"] = True
+                except APIConnectionError as exc:
+                    progress.empty()
+                    st.session_state["analysis_result_text"] = f"DeepSeek 连接失败：{type(exc).__name__}\n请检查网络/VPN，稍后重试。"
+                    st.session_state["analysis_result_title"] = f"{selected_name} ({selected_code})"
+                    st.session_state["analysis_result_time"] = datetime.now().strftime("%m-%d %H:%M:%S")
+                    st.session_state["analysis_show_dialog"] = True
+                except APIStatusError as exc:
+                    progress.empty()
+                    st.session_state["analysis_result_text"] = (
+                        f"DeepSeek 服务返回异常状态：HTTP {getattr(exc, 'status_code', 'N/A')}\n"
+                        f"{exc}"
+                    )
+                    st.session_state["analysis_result_title"] = f"{selected_name} ({selected_code})"
+                    st.session_state["analysis_result_time"] = datetime.now().strftime("%m-%d %H:%M:%S")
+                    st.session_state["analysis_show_dialog"] = True
+                except Exception as exc:
+                    progress.empty()
+                    st.session_state["analysis_result_text"] = f"DeepSeek 分析失败: {type(exc).__name__}: {exc}"
+                    st.session_state["analysis_result_title"] = f"{selected_name} ({selected_code})"
+                    st.session_state["analysis_result_time"] = datetime.now().strftime("%m-%d %H:%M:%S")
+                    st.session_state["analysis_show_dialog"] = True
 
     for i in range(0, len(cards), 4):
         cols = st.columns(4)
@@ -1060,7 +1341,7 @@ def _render_fast_panel(selected_code: str, selected_name: str, panel=None):
             st.altair_chart(chart, use_container_width=True)
 
     with right:
-        st.markdown('<div class="panel-title">实时盘口 (单位:手)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">实时盘口<span class="unit-sub">单位：手</span></div>', unsafe_allow_html=True)
         sell_df = pd.DataFrame(order_book_5.get("sell", []))
         buy_df = pd.DataFrame(order_book_5.get("buy", []))
 
@@ -1136,3 +1417,70 @@ if auto_refresh_on and market_open_for_ctrl:
     _auto_fast_panel_fragment()
 else:
     _render_fast_panel_fragment()
+
+if st.session_state.get("analysis_show_dialog") and st.session_state.get("analysis_result_text"):
+    analysis_text = st.session_state.get("analysis_result_text", "")
+    analysis_title = st.session_state.get("analysis_result_title", "分析结果")
+    analysis_time = st.session_state.get("analysis_result_time", "")
+    analysis_stats = st.session_state.get("analysis_result_stats", {}) or {}
+    usage = analysis_stats.get("usage", {}) or {}
+    elapsed = analysis_stats.get("elapsed")
+    cost = analysis_stats.get("cost")
+
+    if hasattr(st, "dialog"):
+        @st.dialog("DeepSeek 分析结果", width="large")
+        def _show_analysis_dialog():
+            st.markdown(f"### {analysis_title}")
+            st.caption(f"完成时间: {analysis_time}")
+            st.caption(
+                f"耗时: {elapsed:.2f}s | 输入: {usage.get('prompt_tokens', 0)} | 输出: {usage.get('completion_tokens', 0)} | "
+                f"缓存命中: {usage.get('prompt_cache_hit_tokens', 0)} | 预估成本: {cost:.4f} 元"
+                if elapsed is not None and cost is not None
+                else ""
+            )
+            st.text_area(
+                "分析文档",
+                value=analysis_text,
+                height=420,
+                key=f"analysis_doc_{analysis_time}",
+                label_visibility="collapsed",
+            )
+            js_doc = json.dumps(analysis_text, ensure_ascii=False)
+            html(
+                f"""
+                <div style="margin-top:0.4rem;">
+                  <button id="copy-analysis-doc"
+                    style="height:38px;padding:0 0.9rem;border-radius:8px;border:1px solid #a8c2e8;background:#dbeafe;color:#0f2a52;font-size:0.95rem;font-weight:700;cursor:pointer;">
+                    复制分析文档
+                  </button>
+                  <span id="copy-analysis-msg" style="margin-left:0.55rem;color:#2e4b6e;font-size:0.86rem;"></span>
+                </div>
+                <script>
+                  const b = document.getElementById("copy-analysis-doc");
+                  const m = document.getElementById("copy-analysis-msg");
+                  const t = {js_doc};
+                  b.onclick = async function () {{
+                    try {{
+                      await navigator.clipboard.writeText(t);
+                      m.textContent = "已复制";
+                    }} catch (e) {{
+                      m.textContent = "复制失败";
+                    }}
+                  }};
+                </script>
+                """,
+                height=64,
+            )
+
+        _show_analysis_dialog()
+        st.session_state["analysis_show_dialog"] = False
+    else:
+        st.markdown("---")
+        st.subheader("DeepSeek 分析结果")
+        st.caption(f"{analysis_title} · {analysis_time}")
+        if elapsed is not None and cost is not None:
+            st.caption(
+                f"耗时: {elapsed:.2f}s | 输入: {usage.get('prompt_tokens', 0)} | 输出: {usage.get('completion_tokens', 0)} | "
+                f"缓存命中: {usage.get('prompt_cache_hit_tokens', 0)} | 预估成本: {cost:.4f} 元"
+            )
+        st.text_area("分析文档", value=analysis_text, height=360, key=f"analysis_fallback_{analysis_time}")
