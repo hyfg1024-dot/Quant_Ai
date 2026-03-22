@@ -1,4 +1,4 @@
-# 股票观察面板（v1.0）
+# 股票观察面板（v1.1）
 
 一个面向个人投资者的本地量化看板：
 - `基本面`（慢引擎）：SQLite + AkShare
@@ -48,6 +48,49 @@ streamlit run app.py
 ```
 
 执行后，桌面会出现 `启动股票观察面板.command`，双击即可启动。
+
+## 从 v1.0 升级到 v1.1（已有用户看这里）
+
+### A. 你是用 `git clone` 安装的（推荐）
+在项目目录执行：
+
+```bash
+cd Quant_App
+git fetch --tags
+git pull origin main
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+可选：若你想明确切到 v1.1 标签版本：
+
+```bash
+git checkout v1.1
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+然后启动：
+
+```bash
+streamlit run app.py
+```
+
+### B. 你是用 ZIP 安装的
+1. 到 GitHub 仓库重新下载最新版 ZIP（v1.1）。  
+2. 覆盖原项目目录（建议先备份你自己的配置）。  
+3. 重新安装依赖：
+
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+4. 重新启动 `streamlit run app.py`。
+
+### 升级后确认
+- 页面顶部版本号应显示 `QDB-20260320-15`（或更高）。
+- 右侧有两个按钮：`复制JSON`（上）+ `DeepSeek分析`（下）。
 
 ## 使用说明（30秒）
 - 左侧输入股票代码或名称，点 `持仓` / `观察`
