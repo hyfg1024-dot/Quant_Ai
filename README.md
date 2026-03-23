@@ -1,6 +1,6 @@
-# 股票观察面板（AI分析版）
+# 股票观察面板
 
-`Quant_App` 仅维护 AI 分析版程序。
+`Quant_App` 为当前主线版本（含 DeepSeek 分析功能）。
 
 ## 功能
 - 基本面（慢引擎）：SQLite + AkShare
